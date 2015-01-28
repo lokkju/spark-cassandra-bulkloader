@@ -216,7 +216,6 @@ public class App {
 
     options.addOption(OptionBuilder.withDescription("Load the data in bulk")
         .withLongOpt("bulk")
-        .isRequired()
         .create(OUTPUT_BULK));
 
     GnuParser parser = new GnuParser();
