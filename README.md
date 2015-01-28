@@ -1,5 +1,6 @@
 # cassandra-spark
-Test application to upload data into cassandra using spark
+
+Test application to upload data into cassandra using spark, sample data and a schema.cql is available under src/main/resources/data
 
 ## Usage
 
