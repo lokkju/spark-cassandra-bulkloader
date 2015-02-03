@@ -8,7 +8,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.db.marshal.Int32Type;
+import org.apache.cassandra.db.marshal.LongType;
 import org.apache.spark.api.java.function.PairFunction;
 
 import scala.Tuple2;
@@ -26,17 +27,25 @@ public class MapDataToCQLBytesPair implements PairFunction<Data, ByteBuffer, Lis
    */
   private static final long serialVersionUID = -4807077651199070907L;
 
-  /* (non-Javadoc)
-   * @see org.apache.spark.api.java.function.PairFunction#call(java.lang.Object)
+  /**
+   * Call the method to map the data into a list of <tt>ByteBuffer</tt> matching the
+   * insert statement declared as part of the job
+   * 
+   * @param data the input data
+   * @return the key/value tuple
    */
   public Tuple2<ByteBuffer, List<ByteBuffer>> call(Data data) throws Exception {
-    ByteBuffer key = ByteBufferUtil.bytes(data.getFirst());
+    ByteBuffer key = Int32Type.instance.decompose(data.getFirst());
     
     List<ByteBuffer> values = new ArrayList<ByteBuffer>();
     
-    values.add(ByteBufferUtil.bytes(data.getFirst()));
-    values.add(ByteBufferUtil.bytes(data.getSecond()));
-    values.add(ByteBufferUtil.bytes(new Date().getTime()));
+    // add the data to the values
+    values.add(Int32Type.instance.decompose(data.getFirst()));
+    values.add(Int32Type.instance.decompose(data.getSecond()));
+    
+    // add the timestamp and ttl
+    values.add(LongType.instance.decompose(new Date().getTime()));
+    values.add(Int32Type.instance.decompose(0));
     
     return new Tuple2<ByteBuffer, List<ByteBuffer>>(key, values);
   }

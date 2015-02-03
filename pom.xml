@@ -17,19 +17,9 @@
       <version>1.2</version>
     </dependency>
     <dependency>
-      <groupId>com.datastax.spark</groupId>
-      <artifactId>spark-cassandra-connector-java_2.10</artifactId>
-      <version>1.1.1</version>
-    </dependency>
-    <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-client</artifactId>
       <version>2.6.0</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.cassandra</groupId>
-      <artifactId>cassandra-all</artifactId>
-      <version>2.1.2</version>
     </dependency>
     <dependency>
       <groupId>org.apache.spark</groupId>
@@ -37,14 +27,19 @@
       <version>1.2.0</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.cassandra</groupId>
-      <artifactId>cassandra-all</artifactId>
-      <version>2.1.2</version>
-    </dependency>
-    <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
-      <version>16.0.1</version>
+      <version>15.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.cassandra</groupId>
+      <artifactId>cassandra-all</artifactId>
+      <version>2.0.11</version>
+    </dependency>
+    <dependency>
+      <groupId>com.datastax.spark</groupId>
+      <artifactId>spark-cassandra-connector-java_2.10</artifactId>
+      <version>1.1.1</version>
     </dependency>
   </dependencies>
   <build>
@@ -63,7 +58,7 @@
               <relocations>
                 <relocation>
                   <pattern>com.google.common.collect</pattern>
-                  <shadedPattern>com.shopdirect.google.common.collect</shadedPattern>
+                  <shadedPattern>uk.co.pinpointlabs.google.common.collect</shadedPattern>
                 </relocation>
               </relocations>
               <transformers>

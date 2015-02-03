@@ -11,6 +11,11 @@ import java.io.Serializable;
  * @author Robert Bruce <rob@pinpointlabs.co.uk>
  */
 public class Data implements Serializable {
+  /**
+   * Generated serial version uid
+   */
+  private static final long serialVersionUID = 4826812596631302859L;
+  
   protected Integer first;
   protected Integer second;
   

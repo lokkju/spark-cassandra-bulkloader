@@ -22,10 +22,11 @@ public class MapTextToData implements FlatMapFunction<String, Data> {
    */
   private static final long serialVersionUID = 2328895679698637446L;
 
-  /*
-   * (non-Javadoc)
+  /**
+   * Call the method to map the text data into the model
    * 
-   * @see org.apache.spark.api.java.function.FlatMapFunction#call(java.lang.Object)
+   * @param line the line of text to parse
+   * @return the data models
    */
   @SuppressWarnings("unchecked")
   public Iterable<Data> call(String line) throws Exception {
@@ -35,10 +36,15 @@ public class MapTextToData implements FlatMapFunction<String, Data> {
       return (Iterable<Data>) IteratorUtils.emptyIterator();
     }
     
-    // we just use the last 2 values
+    Integer first, second;
     
-    Integer first = Integer.valueOf(data[data.length - 2]);
-    Integer second = Integer.valueOf(data[data.length - 1]);
+    // we just use the last 2 values
+    try {
+      first = Integer.valueOf(data[data.length - 2]);
+      second = Integer.valueOf(data[data.length - 1]);
+    } catch (NumberFormatException ex) {
+      return (Iterable<Data>) IteratorUtils.emptyIterator();
+    }
 
     return Arrays.asList(new Data[] {new Data(first, second)});
   }

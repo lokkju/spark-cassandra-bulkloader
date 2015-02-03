@@ -3,12 +3,10 @@
  */
 package uk.co.pinpointlabs;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 
 import org.apache.cassandra.hadoop.ConfigHelper;
-import org.apache.cassandra.hadoop.cql3.CqlBulkOutputFormat;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -22,11 +20,11 @@ import org.apache.spark.api.java.JavaSparkContext;
 
 import uk.co.pinpointlabs.function.MapDataToCQLBytesPair;
 import uk.co.pinpointlabs.function.MapTextToData;
+import uk.co.pinpointlabs.io.CqlConcurrentBulkOutputFormat;
 import uk.co.pinpointlabs.model.Data;
 import static com.datastax.spark.connector.japi.CassandraJavaUtil.*;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ColumnMetadata;
 import com.datastax.driver.core.KeyspaceMetadata;
 import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.TableMetadata;
@@ -49,7 +47,7 @@ public class App {
   /**
    * Our insert statement
    */
-  private static final String INSERT_STATEMENT = "INSERT INTO %s.%s (first, second) VALUES (?, ?) USING TIMESTAMP ?;";
+  private static final String INSERT_STATEMENT = "INSERT INTO %s.%s (first, second) VALUES (?, ?) USING TIMESTAMP ? AND TTL ?;";
 
   /**
    * Application entry point
@@ -75,17 +73,21 @@ public class App {
     SparkConf conf = new SparkConf(true);
 
     if (!cli.hasOption(OUTPUT_BULK)) {
-      conf.set("spark.cassandra.connection.host", cli.getOptionValue(OUTPUT_HOST));
+      conf.set("spark.cassandra.connection.host",
+          cli.getOptionValue(OUTPUT_HOST));
       conf.set("spark.cassandra.connection.rpc.port", "9160");
       conf.set("spark.cassandra.connection.native.port", "9042");
     }
 
     JavaSparkContext context = new JavaSparkContext(conf);
+    
+    JavaRDD<Data> data = context.textFile(cli.getOptionValue(INPUT_PATH))
+        .flatMap(new MapTextToData());
 
     if (cli.hasOption(OUTPUT_BULK)) {
-      this.bulkSaveToCassandra(context, cli);
+      this.bulkSaveToCassandra(data, cli);
     } else {
-      this.saveToCassandra(context, cli);
+      this.saveToCassandra(data, cli);
     }
 
     context.stop();
@@ -100,10 +102,7 @@ public class App {
    * @param cli the command line options
    */
   @SuppressWarnings("unchecked")
-  protected void saveToCassandra(JavaSparkContext context, CommandLine cli) {
-    JavaRDD<Data> data = context.textFile(cli.getOptionValue(INPUT_PATH))
-        .flatMap(new MapTextToData());
-
+  protected void saveToCassandra(JavaRDD<Data> data, CommandLine cli) {
     javaFunctions(data).writerBuilder(cli.getOptionValue(OUTPUT_KEYSPACE),
         cli.getOptionValue(OUTPUT_TABLE),
         mapToRow(Data.class)).saveToCassandra();
@@ -116,53 +115,62 @@ public class App {
    * @param cli the command line options
    * @throws Exception
    */
-  protected void bulkSaveToCassandra(JavaSparkContext context, CommandLine cli)
+  protected void bulkSaveToCassandra(JavaRDD<Data> data, CommandLine cli)
       throws Exception {
     String host = cli.getOptionValue(OUTPUT_HOST);
     String keyspace = cli.getOptionValue(OUTPUT_KEYSPACE);
     String colFamily = cli.getOptionValue(OUTPUT_TABLE);
-    
+
     // connect to the cluster to get metadata
     Cluster.Builder clusterBuilder = Cluster.builder();
     clusterBuilder.addContactPoints(host);
     Cluster cluster = clusterBuilder.build();
-    
+
     Metadata clusterMetadata = cluster.getMetadata();
     KeyspaceMetadata keyspaceMetadata = clusterMetadata.getKeyspace(keyspace);
     TableMetadata tableMetadata = keyspaceMetadata.getTable(colFamily);
-    
+
+    // the schema and partitioner is what we need
     String cqlSchema = tableMetadata.asCQLQuery();
-    
     String partitionerClass = clusterMetadata.getPartitioner();
-    Class.forName(partitionerClass);
-      
-    cluster.close();
     
+    // force an exception to be thrown if the partitioner is unknown
+    Class.forName(partitionerClass);
+
+    cluster.close();
+
     // setup the hadoop job
     Job job = Job.getInstance();
-    
+
+    // set the host to connect to
     ConfigHelper.setOutputInitialAddress(job.getConfiguration(), cli.getOptionValue(OUTPUT_HOST));
     ConfigHelper.setOutputRpcPort(job.getConfiguration(), "9160");
-    ConfigHelper.setOutputColumnFamily(job.getConfiguration(), cli.getOptionValue(OUTPUT_KEYSPACE), cli.getOptionValue(OUTPUT_TABLE));
     
-    job.getConfiguration().set("mapreduce.output.bulkoutputformat.buffersize", "64");
+    // set the column family that is going to be loaded into
+    ConfigHelper.setOutputColumnFamily(job.getConfiguration(),
+        cli.getOptionValue(OUTPUT_KEYSPACE),
+        cli.getOptionValue(OUTPUT_TABLE));
 
-    CqlBulkOutputFormat.setColumnFamilySchema(job.getConfiguration(), colFamily, cqlSchema);
-    CqlBulkOutputFormat.setColumnFamilyInsertStatement(job.getConfiguration(),
+    // set the schema and insert statement
+    CqlConcurrentBulkOutputFormat.setColumnFamilySchema(job.getConfiguration(),
+        colFamily,
+        cqlSchema);
+    CqlConcurrentBulkOutputFormat.setColumnFamilyInsertStatement(job.getConfiguration(),
         colFamily,
         this.buildPreparedInsertStatement(cli));
-    ConfigHelper.setOutputPartitioner(job.getConfiguration(), partitionerClass);
     
+    // set the partitioner that we use
+    ConfigHelper.setOutputPartitioner(job.getConfiguration(), partitionerClass);
+
+    // setup the hadoop job
     job.setOutputKeyClass(ByteBuffer.class);
     job.setOutputValueClass(List.class);
-    job.setOutputFormatClass(CqlBulkOutputFormat.class);
-    
-    context.textFile(cli.getOptionValue(INPUT_PATH))
-        .flatMap(new MapTextToData())
-        .mapToPair(new MapDataToCQLBytesPair())
+    job.setOutputFormatClass(CqlConcurrentBulkOutputFormat.class);
+
+    data.mapToPair(new MapDataToCQLBytesPair())
         .saveAsNewAPIHadoopDataset(job.getConfiguration());
   }
-  
+
   /**
    * Build a prepared statement
    * 
@@ -170,8 +178,7 @@ public class App {
    * @return the statement
    */
   protected String buildPreparedInsertStatement(CommandLine cli) {
-    return String.format(
-        INSERT_STATEMENT,
+    return String.format(INSERT_STATEMENT,
         cli.getOptionValue(OUTPUT_KEYSPACE),
         cli.getOptionValue(OUTPUT_TABLE));
   }

@@ -4,4 +4,5 @@ CREATE TABLE test.data (
     first int,
     second int,
     PRIMARY KEY (first, second)
-) WITH CLUSTERING ORDER BY (second ASC);
+) WITH CLUSTERING ORDER BY (second ASC) AND
+compression={'sstable_compression': ''};
